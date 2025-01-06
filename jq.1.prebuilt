@@ -1,5 +1,5 @@
 .
-.TH "JQ" "1" "May 2024" "" ""
+.TH "JQ" "1" "November 2024" "" ""
 .
 .SH "NAME"
 \fBjq\fR \- Command\-line JSON processor
@@ -163,13 +163,13 @@ Implies \fB\-\-stream\fR\. Invalid JSON inputs produce no error values when \fB\
 Use the \fBapplication/json\-seq\fR MIME type scheme for separating JSON texts in jq\'s input and output\. This means that an ASCII RS (record separator) character is printed before each value on output and an ASCII LF (line feed) is printed after every output\. Input JSON texts that fail to parse are ignored (but warned about), discarding all subsequent input until the next RS\. This mode also parses the output of jq without the \fB\-\-seq\fR option\.
 .
 .TP
-\fB\-f filename\fR / \fB\-\-from\-file filename\fR:
+\fB\-f\fR / \fB\-\-from\-file\fR:
 .
 .IP
-Read filter from the file rather than from a command line, like awk\'s \-f option\.
+Read the filter from a file rather than from a command line, like awk\'s \-f option\. This changes the filter argument to be interpreted as a filename, instead of the source of a program\.
 .
 .TP
-\fB\-L directory\fR:
+\fB\-L directory\fR / \fB\-\-library\-path directory\fR:
 .
 .IP
 Prepend \fBdirectory\fR to the search list for modules\. If this option is used then no builtin search list is used\. See the section on modules below\.
@@ -181,7 +181,7 @@ Prepend \fBdirectory\fR to the search list for modules\. If this option is used 
 This option passes a value to the jq program as a predefined variable\. If you run jq with \fB\-\-arg foo bar\fR, then \fB$foo\fR is available in the program and has the value \fB"bar"\fR\. Note that \fBvalue\fR will be treated as a string, so \fB\-\-arg foo 123\fR will bind \fB$foo\fR to \fB"123"\fR\.
 .
 .IP
-Named arguments are also available to the jq program as \fB$ARGS\.named\fR\.
+Named arguments are also available to the jq program as \fB$ARGS\.named\fR\. When the name is not a valid identifier, this is the only way to access it\.
 .
 .TP
 \fB\-\-argjson name JSON\-text\fR:
@@ -1340,11 +1340,14 @@ jq \'[paths(type == "number")]\'
 .
 .IP "" 0
 .
-.SS "add"
+.SS "add, add(generator)"
 The filter \fBadd\fR takes as input an array, and produces as output the elements of the array added together\. This might mean summed, concatenated or merged depending on the types of the elements of the input array \- the rules are the same as those for the \fB+\fR operator (described above)\.
 .
 .P
 If the input is an empty array, \fBadd\fR returns \fBnull\fR\.
+.
+.P
+\fBadd(generator)\fR operates on the given generator rather than the input\.
 .
 .IP "" 4
 .
@@ -1361,6 +1364,10 @@ jq \'add\'
 jq \'add\'
    []
 => null
+
+jq \'add(\.[]\.a)\'
+   [{"a":3}, {"a":5}, {"b":6}]
+=> 8
 .
 .fi
 .
@@ -2192,7 +2199,7 @@ This builtin returns true if jq was built with "decnum", which is the current li
 This builtin binding shows the jq executable\'s build configuration\. Its value has no particular format, but it can be expected to be at least the \fB\./configure\fR command\-line arguments, and may be enriched in the future to include the version strings for the build tooling used\.
 .
 .P
-Note that this can be overriden in the command\-line with \fB\-\-arg\fR and related options\.
+Note that this can be overridden in the command\-line with \fB\-\-arg\fR and related options\.
 .
 .SS "$ENV, env"
 \fB$ENV\fR is an object representing the environment variables as set when the jq program started\.
@@ -2323,6 +2330,12 @@ Applies HTML/XML escaping, by mapping the characters \fB<>&\'"\fR to their entit
 Applies percent\-encoding, by mapping all reserved URI characters to a \fB%XX\fR sequence\.
 .
 .TP
+\fB@urid\fR:
+.
+.IP
+The inverse of \fB@uri\fR, applies percent\-decoding, by mapping all \fB%XX\fR sequences to their corresponding URI characters\.
+.
+.TP
 \fB@csv\fR:
 .
 .IP
@@ -2433,7 +2446,7 @@ The \fBlocaltime\fR builtin works like the \fBgmtime\fR builtin, but using the l
 The \fBmktime\fR builtin consumes "broken down time" representations of time output by \fBgmtime\fR and \fBstrptime\fR\.
 .
 .P
-The \fBstrptime(fmt)\fR builtin parses input strings matching the \fBfmt\fR argument\. The output is in the "broken down time" representation consumed by \fBgmtime\fR and output by \fBmktime\fR\.
+The \fBstrptime(fmt)\fR builtin parses input strings matching the \fBfmt\fR argument\. The output is in the "broken down time" representation consumed by \fBmktime\fR and output by \fBgmtime\fR\.
 .
 .P
 The \fBstrftime(fmt)\fR builtin formats a time (GMT) with the given format\. The \fBstrflocaltime\fR does the same, but using the local timezone setting\.
@@ -3422,16 +3435,31 @@ jq \'isempty(\.[])\'
 .
 .IP "" 0
 .
-.SS "limit(n; exp)"
-The \fBlimit\fR function extracts up to \fBn\fR outputs from \fBexp\fR\.
+.SS "limit(n; expr)"
+The \fBlimit\fR function extracts up to \fBn\fR outputs from \fBexpr\fR\.
 .
 .IP "" 4
 .
 .nf
 
-jq \'[limit(3;\.[])]\'
+jq \'[limit(3; \.[])]\'
    [0,1,2,3,4,5,6,7,8,9]
 => [0,1,2]
+.
+.fi
+.
+.IP "" 0
+.
+.SS "skip(n; expr)"
+The \fBskip\fR function skips the first \fBn\fR outputs from \fBexpr\fR\.
+.
+.IP "" 4
+.
+.nf
+
+jq \'[skip(3; \.[])]\'
+   [0,1,2,3,4,5,6,7,8,9]
+=> [3,4,5,6,7,8,9]
 .
 .fi
 .
@@ -3447,9 +3475,13 @@ The \fBnth(n; expr)\fR function extracts the nth value output by \fBexpr\fR\. No
 .
 .nf
 
-jq \'[first(range(\.)), last(range(\.)), nth(\./2; range(\.))]\'
+jq \'[first(range(\.)), last(range(\.)), nth(5; range(\.))]\'
    10
 => [0,9,5]
+
+jq \'[first(empty), last(empty), nth(5; empty)]\'
+   null
+=> []
 .
 .fi
 .
@@ -4037,7 +4069,7 @@ Backslash continuing the comment on the next line can be useful when writing the
 # total \- Output the sum of the given arguments (or stdin)
 # usage: total [numbers\.\.\.]
 # \e
-exec jq \-\-args \-MRnf "$0" \-\- "$@"
+exec jq \-\-args \-MRnf \-\- "$0" "$@"
 
 $ARGS\.positional |
 reduce (
@@ -4057,7 +4089,7 @@ reduce (
 .IP "" 0
 .
 .P
-The \fBexec\fR line is considered a comment by jq, so it is ignored\. But it is not ignored by \fBsh\fR, since in \fBsh\fR a backslash at the end of the line does not continue the comment\. With this trick, when the script is invoked as \fBtotal 1 2\fR, \fB/bin/sh \-\- /path/to/total 1 2\fR will be run, and \fBsh\fR will then run \fBexec jq \-\-args \-MRnf /path/to/total \-\- 1 2\fR replacing itself with a \fBjq\fR interpreter invoked with the specified options (\fB\-M\fR, \fB\-R\fR, \fB\-n\fR, \fB\-\-args\fR), that evaluates the current file (\fB$0\fR), with the arguments (\fB$@\fR) that were passed to \fBsh\fR\.
+The \fBexec\fR line is considered a comment by jq, so it is ignored\. But it is not ignored by \fBsh\fR, since in \fBsh\fR a backslash at the end of the line does not continue the comment\. With this trick, when the script is invoked as \fBtotal 1 2\fR, \fB/bin/sh \-\- /path/to/total 1 2\fR will be run, and \fBsh\fR will then run \fBexec jq \-\-args \-MRnf \-\- /path/to/total 1 2\fR replacing itself with a \fBjq\fR interpreter invoked with the specified options (\fB\-M\fR, \fB\-R\fR, \fB\-n\fR, \fB\-\-args\fR), that evaluates the current file (\fB$0\fR), with the arguments (\fB$@\fR) that were passed to \fBsh\fR\.
 .
 .SH "MODULES"
 jq has a library/module system\. Modules are files whose names end in \fB\.jq\fR\.
@@ -4096,7 +4128,7 @@ Consecutive components with the same name are not allowed to avoid ambiguities (
 For example, with \fB\-L$HOME/\.jq\fR a module \fBfoo\fR can be found in \fB$HOME/\.jq/foo\.jq\fR and \fB$HOME/\.jq/foo/foo\.jq\fR\.
 .
 .P
-If \fB$HOME/\.jq\fR is a file, it is sourced into the main program\.
+If \fB\.jq\fR exists in the user\'s home directory, and is a file (not a directory), it is automatically sourced into the main program\.
 .
 .SS "import RelativePathString as NAME [<metadata>];"
 Imports a module found at the given path relative to a directory in a search path\. A \fB\.jq\fR suffix will be added to the relative path string\. The module\'s symbols are prefixed with \fBNAME::\fR\.

@@ -61,7 +61,7 @@ null
 null
 "interpolation"
 
-@text,@json,([1,.]|@csv,@tsv),@html,@uri,@sh,(@base64|.,@base64d)
+@text,@json,([1,.]|@csv,@tsv),@html,(@uri|.,@urid),@sh,(@base64|.,@base64d)
 "!()<>&'\"\t"
 "!()<>&'\"\t"
 "\"!()<>&'\\\"\\t\""
@@ -69,6 +69,7 @@ null
 "1\t!()<>&'\"\\t"
 "!()&lt;&gt;&amp;&apos;&quot;\t"
 "%21%28%29%3C%3E%26%27%22%09"
+"!()<>&'\"\t"
 "'!()<>&'\\''\"\t'"
 "ISgpPD4mJyIJ"
 "!()<>&'\"\t"
@@ -85,6 +86,10 @@ null
 @uri
 "\u03bc"
 "%CE%BC"
+
+@urid
+"%CE%BC"
+"\u03bc"
 
 @html "<b>\(.)</b>"
 "<script>hax</script>"
@@ -317,6 +322,10 @@ null
 [{"a":1}, {"b":2}, {"a":3, "b":4}]
 [-1, -1, -4]
 
+[foreach range(5) as $x (0; .+$x | select($x!=2); [$x,.])]
+null
+[[0,0],[1,1],[3,4],[4,8]]
+
 [limit(3; .[])]
 [11,22,33,44,55,66,77,88,99]
 [11,22,33]
@@ -329,9 +338,37 @@ null
 "badness"
 [1]
 
+try limit(-1; error) catch .
+null
+"limit doesn't support negative count"
+
+[skip(3; .[])]
+[1,2,3,4,5,6,7,8,9]
+[4,5,6,7,8,9]
+
+[skip(0,2,3,4; .[])]
+[1,2,3]
+[1,2,3,3]
+
+[skip(3; .[])]
+[]
+[]
+
+try skip(-1; error) catch .
+null
+"skip doesn't support negative count"
+
+nth(1; 0,1,error("foo"))
+null
+1
+
 [first(range(.)), last(range(.))]
 10
 [0,9]
+
+[first(range(.)), last(range(.))]
+0
+[]
 
 [nth(0,5,9,10,15; range(.)), try nth(-1; range(.)) catch .]
 10
@@ -642,6 +679,19 @@ map_values(.+1)
 [0,1,2]
 [1,2,3]
 
+[add(null), add(range(range(10))), add(empty), add(10,range(10))]
+null
+[null,120,null,55]
+
+# Real-world use case for add(empty)
+.sum = add(.arr[])
+{"arr":[]}
+{"arr":[],"sum":null}
+
+add({(.[]):1}) | keys
+["a","a","b","a","d","b","d","a","d"]
+["a","b","d"]
+
 #
 # User-defined functions
 # Oh god.
@@ -778,6 +828,10 @@ null
 reduce . as $n (.; .)
 null
 null
+
+reduce range(5) as $x (0; .+$x | select($x!=2))
+null
+8
 
 # Destructuring
 . as {$a, b: [$c, {$d}]} | [$a, $c, $d]
@@ -1370,6 +1424,22 @@ indices(", ")
 "a,b, cd,e, fgh, ijkl"
 [3,9,14]
 
+index("!")
+"здравствуй мир!"
+14
+
+.[:rindex("x")]
+"正xyz"
+"正"
+
+indices("o")
+"🇬🇧oo"
+[2,3]
+
+indices("o")
+"ƒoo"
+[1,2]
+
 [.[]|split(",")]
 ["a, bc, def, ghij, jklmn, a,b, c,d, e,f", "a,b,c,d, e,f,g,h"]
 [["a"," bc"," def"," ghij"," jklmn"," a","b"," c","d"," e","f"],["a","b","c","d"," e","f","g","h"]]
@@ -1591,6 +1661,10 @@ strftime("%A, %B %d, %Y")
 strftime("%Y-%m-%dT%H:%M:%SZ")
 [2024,2,15]
 "2024-03-15T00:00:00Z"
+
+mktime
+[2024,8,21]
+1726876800
 
 gmtime
 1425599507
@@ -2141,6 +2215,9 @@ try ["ok", setpath([1]; 1)] catch ["ko", .]
 {"hi":"hello"}
 ["ko","Cannot index object with number"]
 
+try fromjson catch .
+"{'a': 123}"
+"Invalid string literal; expected \", but got ' at line 1, column 5 (while parsing '{'a': 123}')"
 
 # ltrimstr/1 rtrimstr/1 don't leak on invalid input #2977
 

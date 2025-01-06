@@ -657,6 +657,48 @@ static jv f_format(jq_state *jq, jv input, jv fmt) {
     }
     jv_free(input);
     return line;
+  } else if (!strcmp(fmt_s, "urid")) {
+    jv_free(fmt);
+    input = f_tostring(jq, input);
+
+    jv line = jv_string("");
+    const char *errmsg =  "is not a valid uri encoding";
+    const char *s = jv_string_value(input);
+    while (*s) {
+      if (*s != '%') {
+        line = jv_string_append_buf(line, s++, 1);
+      } else {
+        unsigned char unicode[4] = {0};
+        int b = 0;
+        // check leading bits of first octet to determine length of unicode character
+        // (https://datatracker.ietf.org/doc/html/rfc3629#section-3)
+        while (b == 0 || (b < 4 && unicode[0] >> 7 & 1 && unicode[0] >> (7-b) & 1)) {
+          if (*(s++) != '%') {
+            jv_free(line);
+            return type_error(input, errmsg);
+          }
+          for (int i=0; i<2; i++) {
+            unicode[b] <<= 4;
+            char c = *(s++);
+            if ('0' <= c && c <= '9') unicode[b] |= c - '0';
+            else if ('a' <= c && c <= 'f') unicode[b] |= c - 'a' + 10;
+            else if ('A' <= c && c <= 'F') unicode[b] |= c - 'A' + 10;
+            else {
+              jv_free(line);
+              return type_error(input, errmsg);
+            }
+          }
+          b++;
+        }
+        if (!jvp_utf8_is_valid((const char *)unicode, (const char *)unicode+b)) {
+          jv_free(line);
+          return type_error(input, errmsg);
+        }
+        line = jv_string_append_buf(line, (const char *)unicode, b);
+      }
+    }
+    jv_free(input);
+    return line;
   } else if (!strcmp(fmt_s, "sh")) {
     jv_free(fmt);
     if (jv_get_kind(input) != JV_KIND_ARRAY)
@@ -1560,8 +1602,6 @@ static int jv2tm(jv a, struct tm *tm) {
 static jv f_mktime(jq_state *jq, jv a) {
   if (jv_get_kind(a) != JV_KIND_ARRAY)
     return ret_error(a, jv_string("mktime requires array inputs"));
-  if (jv_array_length(jv_copy(a)) < 6)
-    return ret_error(a, jv_string("mktime requires parsed datetime inputs"));
   struct tm tm;
   if (!jv2tm(a, &tm))
     return jv_invalid_with_msg(jv_string("mktime requires parsed datetime inputs"));
@@ -1750,85 +1790,88 @@ static jv f_have_decnum(jq_state *jq, jv a) {
 #endif
 }
 
+#define CFUNC(func, name, arity) \
+  {.fptr = { .a ## arity = func }, name, arity}
+
 #define LIBM_DD(name) \
-  {f_ ## name, #name, 1},
+  CFUNC(f_ ## name, #name, 1),
 #define LIBM_DD_NO(name) LIBM_DD(name)
 #define LIBM_DA(name, type) LIBM_DD(name)
 #define LIBM_DA_NO(name, type) LIBM_DD(name)
 
 #define LIBM_DDD(name) \
-  {f_ ## name, #name, 3},
+  CFUNC(f_ ## name, #name, 3),
 #define LIBM_DDD_NO(name) LIBM_DDD(name)
 
 #define LIBM_DDDD(name) \
-  {f_ ## name, #name, 4},
+  CFUNC(f_ ## name, #name, 4),
 #define LIBM_DDDD_NO(name) LIBM_DDDD(name)
 
 static const struct cfunction function_list[] = {
 #include "libm.h"
-  {f_negate, "_negate", 1},
-#define BINOP(name) {f_ ## name, "_" #name, 3},
+  CFUNC(f_negate, "_negate", 1),
+#define BINOP(name) CFUNC(f_ ## name, "_" #name, 3),
 BINOPS
 #undef BINOP
-  {f_dump, "tojson", 1},
-  {f_json_parse, "fromjson", 1},
-  {f_tonumber, "tonumber", 1},
-  {f_tostring, "tostring", 1},
-  {f_keys, "keys", 1},
-  {f_keys_unsorted, "keys_unsorted", 1},
-  {f_startswith, "startswith", 2},
-  {f_endswith, "endswith", 2},
-  {f_string_split, "split", 2},
-  {f_string_explode, "explode", 1},
-  {f_string_implode, "implode", 1},
-  {f_string_indexes, "_strindices", 2},
-  {f_string_trim, "trim", 1},
-  {f_string_ltrim, "ltrim", 1},
-  {f_string_rtrim, "rtrim", 1},
-  {f_setpath, "setpath", 3}, // FIXME typechecking
-  {f_getpath, "getpath", 2},
-  {f_delpaths, "delpaths", 2},
-  {f_has, "has", 2},
-  {f_contains, "contains", 2},
-  {f_length, "length", 1},
-  {f_utf8bytelength, "utf8bytelength", 1},
-  {f_type, "type", 1},
-  {f_isinfinite, "isinfinite", 1},
-  {f_isnan, "isnan", 1},
-  {f_isnormal, "isnormal", 1},
-  {f_infinite, "infinite", 1},
-  {f_nan, "nan", 1},
-  {f_sort, "sort", 1},
-  {f_sort_by_impl, "_sort_by_impl", 2},
-  {f_group_by_impl, "_group_by_impl", 2},
-  {f_min, "min", 1},
-  {f_max, "max", 1},
-  {f_min_by_impl, "_min_by_impl", 2},
-  {f_max_by_impl, "_max_by_impl", 2},
-  {f_error, "error", 1},
-  {f_format, "format", 2},
-  {f_env, "env", 1},
-  {f_halt, "halt", 1},
-  {f_halt_error, "halt_error", 2},
-  {f_get_search_list, "get_search_list", 1},
-  {f_get_prog_origin, "get_prog_origin", 1},
-  {f_get_jq_origin, "get_jq_origin", 1},
-  {f_match, "_match_impl", 4},
-  {f_modulemeta, "modulemeta", 1},
-  {f_input, "input", 1},
-  {f_debug, "debug", 1},
-  {f_stderr, "stderr", 1},
-  {f_strptime, "strptime", 2},
-  {f_strftime, "strftime", 2},
-  {f_strflocaltime, "strflocaltime", 2},
-  {f_mktime, "mktime", 1},
-  {f_gmtime, "gmtime", 1},
-  {f_localtime, "localtime", 1},
-  {f_now, "now", 1},
-  {f_current_filename, "input_filename", 1},
-  {f_current_line, "input_line_number", 1},
-  {f_have_decnum, "have_decnum", 1},
-  {f_have_decnum, "have_literal_numbers", 1},
+  CFUNC(f_dump, "tojson", 1),
+  CFUNC(f_json_parse, "fromjson", 1),
+  CFUNC(f_tonumber, "tonumber", 1),
+  CFUNC(f_tostring, "tostring", 1),
+  CFUNC(f_keys, "keys", 1),
+  CFUNC(f_keys_unsorted, "keys_unsorted", 1),
+  CFUNC(f_startswith, "startswith", 2),
+  CFUNC(f_endswith, "endswith", 2),
+  CFUNC(f_string_split, "split", 2),
+  CFUNC(f_string_explode, "explode", 1),
+  CFUNC(f_string_implode, "implode", 1),
+  CFUNC(f_string_indexes, "_strindices", 2),
+  CFUNC(f_string_trim, "trim", 1),
+  CFUNC(f_string_ltrim, "ltrim", 1),
+  CFUNC(f_string_rtrim, "rtrim", 1),
+  CFUNC(f_setpath, "setpath", 3),
+  CFUNC(f_getpath, "getpath", 2),
+  CFUNC(f_delpaths, "delpaths", 2),
+  CFUNC(f_has, "has", 2),
+  CFUNC(f_contains, "contains", 2),
+  CFUNC(f_length, "length", 1),
+  CFUNC(f_utf8bytelength, "utf8bytelength", 1),
+  CFUNC(f_type, "type", 1),
+  CFUNC(f_isinfinite, "isinfinite", 1),
+  CFUNC(f_isnan, "isnan", 1),
+  CFUNC(f_isnormal, "isnormal", 1),
+  CFUNC(f_infinite, "infinite", 1),
+  CFUNC(f_nan, "nan", 1),
+  CFUNC(f_sort, "sort", 1),
+  CFUNC(f_sort_by_impl, "_sort_by_impl", 2),
+  CFUNC(f_group_by_impl, "_group_by_impl", 2),
+  CFUNC(f_min, "min", 1),
+  CFUNC(f_max, "max", 1),
+  CFUNC(f_min_by_impl, "_min_by_impl", 2),
+  CFUNC(f_max_by_impl, "_max_by_impl", 2),
+  CFUNC(f_error, "error", 1),
+  CFUNC(f_format, "format", 2),
+  CFUNC(f_env, "env", 1),
+  CFUNC(f_halt, "halt", 1),
+  CFUNC(f_halt_error, "halt_error", 2),
+  CFUNC(f_get_search_list, "get_search_list", 1),
+  CFUNC(f_get_prog_origin, "get_prog_origin", 1),
+  CFUNC(f_get_jq_origin, "get_jq_origin", 1),
+  CFUNC(f_match, "_match_impl", 4),
+  CFUNC(f_modulemeta, "modulemeta", 1),
+  CFUNC(f_input, "input", 1),
+  CFUNC(f_debug, "debug", 1),
+  CFUNC(f_stderr, "stderr", 1),
+  CFUNC(f_strptime, "strptime", 2),
+  CFUNC(f_strftime, "strftime", 2),
+  CFUNC(f_strflocaltime, "strflocaltime", 2),
+  CFUNC(f_mktime, "mktime", 1),
+  CFUNC(f_gmtime, "gmtime", 1),
+  CFUNC(f_localtime, "localtime", 1),
+  CFUNC(f_now, "now", 1),
+  CFUNC(f_current_filename, "input_filename", 1),
+  CFUNC(f_current_line, "input_line_number", 1),
+  CFUNC(f_have_decnum, "have_decnum", 1),
+  CFUNC(f_have_decnum, "have_literal_numbers", 1),
 };
 #undef LIBM_DDDD_NO
 #undef LIBM_DDD_NO
@@ -1838,6 +1881,33 @@ BINOPS
 #undef LIBM_DDD
 #undef LIBM_DD
 #undef LIBM_DA
+
+// This is a hack to make last(g) yield no output values,
+// if g yields no output values, without using boxing.
+static block gen_last_1() {
+  block last_var = gen_op_var_fresh(STOREV, "last");
+  block is_empty_var = gen_op_var_fresh(STOREV, "is_empty");
+  block init = BLOCK(gen_op_simple(DUP),
+                     gen_const(jv_null()),
+                     last_var,
+                     gen_op_simple(DUP),
+                     gen_const(jv_true()),
+                     is_empty_var);
+  block call_arg = BLOCK(gen_call("arg", gen_noop()),
+                         gen_op_simple(DUP),
+                         gen_op_bound(STOREV, last_var),
+                         gen_const(jv_false()),
+                         gen_op_bound(STOREV, is_empty_var),
+                         gen_op_simple(BACKTRACK));
+  block if_empty = gen_op_simple(BACKTRACK);
+  return BLOCK(init,
+               gen_op_target(FORK, call_arg),
+               call_arg,
+               BLOCK(gen_op_bound(LOADVN, is_empty_var),
+                     gen_op_target(JUMP_F, if_empty),
+                     if_empty,
+                     gen_op_bound(LOADVN, last_var)));
+}
 
 struct bytecoded_builtin { const char* name; block code; };
 static block bind_bytecoded_builtins(block b) {
@@ -1858,6 +1928,7 @@ static block bind_bytecoded_builtins(block b) {
       {"path", BLOCK(gen_op_simple(PATH_BEGIN),
                      gen_call("arg", gen_noop()),
                      gen_op_simple(PATH_END))},
+      {"last", gen_last_1()},
     };
     for (unsigned i=0; i<sizeof(builtin_def_1arg)/sizeof(builtin_def_1arg[0]); i++) {
       builtins = BLOCK(builtins, gen_function(builtin_def_1arg[i].name,
