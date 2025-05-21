@@ -226,6 +226,10 @@ null
 [0,1,2]
 [0,5,2]
 
+try (.[999999999] = 0) catch .
+null
+"Array index too large"
+
 #
 # Multiple outputs, iteration
 #
@@ -1503,6 +1507,10 @@ split("")
 [.[]|rtrimstr("foo")]
 ["fo", "foo", "barfoo", "foobar", "foob"]
 ["fo","","bar","foobar","foob"]
+
+[.[]|trimstr("foo")]
+["fo", "foo", "barfoo", "foobarfoo", "foob"]
+["fo","","bar","bar","b"]
 
 [(index(","), rindex(",")), indices(",")]
 "a,bc,def,ghij,klmno"
