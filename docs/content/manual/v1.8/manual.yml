@@ -1,5 +1,5 @@
 ---
-headline: jq 1.7 Manual
+headline: jq 1.8 Manual
 
 body: |
 
@@ -221,12 +221,13 @@ sections:
         RS.  This mode also parses the output of jq without the `--seq`
         option.
 
-      * `-f filename` / `--from-file filename`:
+      * `-f` / `--from-file`:
 
-        Read filter from the file rather than from a command line, like
-        awk's -f option. You can also use '#' to make comments.
+        Read the filter from a file rather than from a command line,
+        like awk's -f option. This changes the filter argument to be
+        interpreted as a filename, instead of the source of a program.
 
-      * `-L directory`:
+      * `-L directory` / `--library-path directory`:
 
         Prepend `directory` to the search list for modules.  If this
         option is used then no builtin search list is used.  See the
@@ -241,7 +242,8 @@ sections:
         bind `$foo` to `"123"`.
 
         Named arguments are also available to the jq program as
-        `$ARGS.named`.
+        `$ARGS.named`. When the name is not a valid identifier, this is
+        the only way to access it.
 
       * `--argjson name JSON-text`:
 
@@ -308,9 +310,8 @@ sections:
 
       * `--`:
 
-        Terminates argument processing.  Remaining arguments are
-        positional, either strings, JSON texts, or input filenames,
-        according to whether `--args` or `--jsonargs` were given.
+        Terminates argument processing.  Remaining arguments are not
+        interpreted as options.
 
       * `--run-tests [filename]`:
 
@@ -353,10 +354,13 @@ sections:
 
           The way in which jq handles numbers has changed over time
           and further changes are likely within the parameters set by
-          the relevant JSON standards.  The following remarks are
-          therefore offered with the understanding that they are
-          intended to be descriptive of the current version of jq and
-          should not be interpreted as being prescriptive:
+          the relevant JSON standards.  Moreover, build configuration
+          options can alter how jq processes numbers.
+
+          The following remarks are therefore offered with the
+          understanding that they are intended to be descriptive of the
+          current version of jq and should not be interpreted as being
+          prescriptive:
 
           (1) Any arithmetic operation on a number that has not
           already been converted to an IEEE754 double precision
@@ -364,16 +368,20 @@ sections:
           representation.
 
           (2) jq will attempt to maintain the original decimal
-          precision of number literals, but in expressions such
-          `1E1234567890`, precision will be lost if the exponent is
-          too large.
+          precision of number literals (if the `--disable-decnum`
+          build configuration option was not used), but in expressions
+          such `1E1234567890`, precision will be lost if the exponent
+          is too large.
 
-          (3) In jq programs, a leading minus sign will trigger the
-          conversion of the number to an IEEE754 representation.
-
-          (4) Comparisons are carried out using the untruncated
+          (3) Comparisons are carried out using the untruncated
           big decimal representation of numbers if available, as
           illustrated in one of the following examples.
+
+          The examples below use the builtin function `have_decnum` in
+          order to demonstrate the expected effects of using / not
+          using the `--disable-decnum` build configuration option, and
+          also to allow automated tests derived from these examples to
+          pass regardless of whether that option is used.
 
         examples:
           - program: '.'
@@ -384,21 +392,25 @@ sections:
             input: '0.12345678901234567890123456789'
             output: ['0.12345678901234567890123456789']
 
-          - program: '[., tojson]'
+          - program: '[., tojson] == if have_decnum then [12345678909876543212345,"12345678909876543212345"] else [12345678909876543000000,"12345678909876543000000"] end'
             input: '12345678909876543212345'
-            output: ['[12345678909876543212345,"12345678909876543212345"]']
+            output: ['true']
+
+          - program: '[1234567890987654321,-1234567890987654321 | tojson] == if have_decnum then ["1234567890987654321","-1234567890987654321"] else ["1234567890987654400","-1234567890987654400"] end'
+            input: 'null'
+            output: ['true']
 
           - program: '. < 0.12345678901234567890123456788'
             input: '0.12345678901234567890123456789'
             output: ['false']
 
-          - program: 'map([., . == 1]) | tojson'
+          - program: 'map([., . == 1]) | tojson == if have_decnum then "[[1,true],[1.000,true],[1.0,true],[1.00,true]]" else "[[1,true],[1,true],[1,true],[1,true]]" end'
             input: '[1, 1.000, 1.0, 100e-2]'
-            output: ['"[[1,true],[1.000,true],[1.0,true],[1.00,true]]"']
+            output: ['true']
 
-          - program: '. as $big | [$big, $big + 1] | map(. > 10000000000000000000000000000000)'
+          - program: '. as $big | [$big, $big + 1] | map(. > 10000000000000000000000000000000) | . == if have_decnum then [true, false] else [false, false] end'
             input: '10000000000000000000000000000001'
-            output: ['[true, false]']
+            output: ['true']
 
       - title: "Object Identifier-Index: `.foo`, `.foo.bar`"
         body: |
@@ -1291,7 +1303,7 @@ sections:
             input: '[1,[[],{"a":2}]]'
             output: ['[[0],[1,1,"a"]]']
 
-      - title: "`add`"
+      - title: "`add`, `add(generator)`"
         body: |
 
           The filter `add` takes as input an array, and produces as
@@ -1301,6 +1313,9 @@ sections:
           as those for the `+` operator (described above).
 
           If the input is an empty array, `add` returns `null`.
+
+          `add(generator)` operates on the given generator rather than
+          the input.
 
         examples:
           - program: add
@@ -1312,6 +1327,9 @@ sections:
           - program: add
             input: '[]'
             output: ["null"]
+          - program: add(.[].a)
+            input: '[{"a":3}, {"a":5}, {"b":6}]'
+            output: ['8']
 
       - title: "`any`, `any(condition)`, `any(generator; condition)`"
         body: |
@@ -1458,6 +1476,18 @@ sections:
           - program: '.[] | tonumber'
             input: '[1, "1"]'
             output: ['1', '1']
+
+      - title: "`toboolean`"
+        body: |
+
+          The `toboolean` function parses its input as a boolean. It
+          will convert correctly-formatted strings to their boolean
+          equivalent, leave booleans alone, and give an error on all other input.
+
+        examples:
+          - program: '.[] | toboolean'
+            input: '["true", "false", true, false]'
+            output: ['true', 'false', 'true', 'false']
 
       - title: "`tostring`"
         body: |
@@ -1768,6 +1798,36 @@ sections:
             input: '["fo", "foo", "barfoo", "foobar", "foob"]'
             output: ['["fo","","bar","foobar","foob"]']
 
+      - title: "`trimstr(str)`"
+        body: |
+
+          Outputs its input with the given string removed at both ends, if it
+          starts or ends with it.
+
+        examples:
+          - program: '[.[]|trimstr("foo")]'
+            input: '["fo", "foo", "barfoo", "foobarfoo", "foob"]'
+            output: ['["fo","","bar","bar","b"]']
+
+      - title: "`trim`, `ltrim`, `rtrim`"
+        body: |
+
+          `trim` trims both leading and trailing whitespace.
+
+          `ltrim` trims only leading (left side) whitespace.
+
+          `rtrim` trims only trailing (right side) whitespace.
+
+          Whitespace characters are the usual `" "`, `"\n"` `"\t"`, `"\r"`
+          and also all characters in the Unicode character database with the
+          whitespace property. Note that what considers whitespace might
+          change in the future.
+
+        examples:
+          - program: 'trim, ltrim, rtrim'
+            input: '" abc "'
+            output: ['"abc"', '"abc "', '" abc"']
+
       - title: "`explode`"
         body: |
 
@@ -1969,6 +2029,19 @@ sections:
             output:
               - '[{"a":{"b":2}}]'
 
+      - title: "`have_literal_numbers`"
+        body: |
+
+          This builtin returns true if jq's build configuration
+          includes support for preservation of input number literals.
+
+      - title: "`have_decnum`"
+        body: |
+
+          This builtin returns true if jq was built with "decnum",
+          which is the current literal number preserving numeric
+          backend implementation for jq.
+
       - title: "`$JQ_BUILD_CONFIGURATION`"
         body: |
 
@@ -2093,6 +2166,11 @@ sections:
 
             Applies percent-encoding, by mapping all reserved URI
             characters to a `%XX` sequence.
+
+          * `@urid`:
+
+            The inverse of `@uri`, applies percent-decoding, by mapping
+            all `%XX` sequences to their corresponding URI characters.
 
           * `@csv`:
 
@@ -2400,7 +2478,7 @@ sections:
         body: |
 
           The `//` operator produces all the values of its left-hand
-          side that are neither `false` nor `null`, or, if the
+          side that are neither `false` nor `null`. If the
           left-hand side produces no values other than `false` or
           `null`, then `//` produces all the values of its right-hand
           side.
@@ -2680,6 +2758,9 @@ sections:
         examples:
           - program: 'splits(", *")'
             input: '"ab,cd,   ef, gh"'
+            output: ['"ab"','"cd"','"ef"','"gh"']
+          - program: 'splits(",? *"; "n")'
+            input: '"ab,cd ef,  gh"'
             output: ['"ab"','"cd"','"ef"','"gh"']
 
       - title: "`sub(regex; tostring)`, `sub(regex; tostring; flags)`"
@@ -2990,15 +3071,25 @@ sections:
             input: '[1,2,3]'
             output: ['false']
 
-      - title: "`limit(n; exp)`"
+      - title: "`limit(n; expr)`"
         body: |
 
-          The `limit` function extracts up to `n` outputs from `exp`.
+          The `limit` function extracts up to `n` outputs from `expr`.
 
         examples:
-          - program: '[limit(3;.[])]'
+          - program: '[limit(3; .[])]'
             input: '[0,1,2,3,4,5,6,7,8,9]'
             output: ['[0,1,2]']
+
+      - title: "`skip(n; expr)`"
+        body: |
+
+          The `skip` function skips the first `n` outputs from `expr`.
+
+        examples:
+          - program: '[skip(3; .[])]'
+            input: '[0,1,2,3,4,5,6,7,8,9]'
+            output: ['[3,4,5,6,7,8,9]']
 
       - title: "`first(expr)`, `last(expr)`, `nth(n; expr)`"
         body: |
@@ -3010,9 +3101,12 @@ sections:
           Note that `nth(n; expr)` doesn't support negative values of `n`.
 
         examples:
-          - program: '[first(range(.)), last(range(.)), nth(./2; range(.))]'
+          - program: '[first(range(.)), last(range(.)), nth(5; range(.))]'
             input: '10'
             output: ['[0,9,5]']
+          - program: '[first(empty), last(empty), nth(5; empty)]'
+            input: 'null'
+            output: ['[]']
 
       - title: "`first`, `last`, `nth(n)`"
         body: |
@@ -3197,7 +3291,7 @@ sections:
       One-input C math functions: `acos` `acosh` `asin` `asinh` `atan`
       `atanh` `cbrt` `ceil` `cos` `cosh` `erf` `erfc` `exp` `exp10`
       `exp2` `expm1` `fabs` `floor` `gamma` `j0` `j1` `lgamma` `log`
-      `log10` `log1p` `log2` `logb` `nearbyint` `pow10` `rint` `round`
+      `log10` `log1p` `log2` `logb` `nearbyint` `rint` `round`
       `significand` `sin` `sinh` `sqrt` `tan` `tanh` `tgamma` `trunc`
       `y0` `y1`.
 
@@ -3537,6 +3631,68 @@ sections:
               (.posts[] | select(.author == "stedolan") | .comments) |=
                   . + ["terrible."]
 
+  - title: Comments
+
+    body: |
+
+      You can write comments in your jq filters using `#`.
+
+      A `#` character (not part of a string) starts a comment.
+      All characters from `#` to the end of the line are ignored.
+
+      If the end of the line is preceded by an odd number of backslash
+      characters, the following line is also considered part of the
+      comment and is ignored.
+
+      For example, the following code outputs `[1,3,4,7]`
+
+          [
+            1,
+            # foo \
+            2,
+            # bar \\
+            3,
+            4, # baz \\\
+            5, \
+            6,
+            7
+            # comment \
+              comment \
+              comment
+          ]
+
+      Backslash continuing the comment on the next line can be useful
+      when writing the "shebang" for a jq script:
+
+          #!/bin/sh --
+          # total - Output the sum of the given arguments (or stdin)
+          # usage: total [numbers...]
+          # \
+          exec jq --args -MRnf -- "$0" "$@"
+
+          $ARGS.positional |
+          reduce (
+            if . == []
+              then inputs
+              else .[]
+            end |
+            . as $dot |
+            try tonumber catch false |
+            if not or isnan then
+              @json "total: Invalid number \($dot).\n" | halt_error(1)
+            end
+          ) as $n (0; . + $n)
+
+      The `exec` line is considered a comment by jq, so it is ignored.
+      But it is not ignored by `sh`, since in `sh` a backslash at the
+      end of the line does not continue the comment.
+      With this trick, when the script is invoked as `total 1 2`,
+      `/bin/sh -- /path/to/total 1 2` will be run, and `sh` will then
+      run `exec jq --args -MRnf -- /path/to/total 1 2` replacing itself
+      with a `jq` interpreter invoked with the specified options (`-M`,
+      `-R`, `-n`, `--args`), that evaluates the current file (`$0`),
+      with the arguments (`$@`) that were passed to `sh`.
+
   - title: Modules
     body: |
 
@@ -3581,7 +3737,8 @@ sections:
       For example, with `-L$HOME/.jq` a module `foo` can be found in
       `$HOME/.jq/foo.jq` and `$HOME/.jq/foo/foo.jq`.
 
-      If `$HOME/.jq` is a file, it is sourced into the main program.
+      If `.jq` exists in the user's home directory, and is a file (not a
+      directory), it is automatically sourced into the main program.
 
     entries:
       - title: "`import RelativePathString as NAME [<metadata>];`"
@@ -3676,7 +3833,7 @@ sections:
         - color for object keys
 
       The default color scheme is the same as setting
-      `JQ_COLORS="0;90:0;37:0;37:0;37:0;32:1;37:1;37:1;34"`.
+      `JQ_COLORS="0;90:0;39:0;39:0;39:0;32:1;39:1;39:1;34"`.
 
       This is not a manual for VT100/ANSI escapes.  However, each of
       these color specifications should consist of two numbers separated
