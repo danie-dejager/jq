@@ -1,6 +1,6 @@
 Name:           jq
-Version:        1.7.1
-Release:        2%{?dist}
+Version:        1.8.0
+Release:        1%{?dist}
 Summary:        Command-line JSON processor
 
 License:        MIT AND ICU AND CC-BY-3.0
@@ -96,6 +96,3 @@ make check
 %{_libdir}/libjq.so
 %{_libdir}/pkgconfig/libjq.pc
 
-%changelog
-* Sat Feb 10 2024 - Danie de Jager <danie.dejager@gmail.com> - 1.7.1-2
-- Initial build for COPR
