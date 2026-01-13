@@ -75,7 +75,7 @@ jobs:
       SUFFIX: linux-${{ matrix.arch }}
     steps:
       - name: Clone repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: true
       - name: Install packages
@@ -103,7 +103,7 @@ jobs:
           git diff --exit-code
       - name: Upload Test Logs
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: test-logs-${{ env.SUFFIX }}
           retention-days: 7
@@ -111,7 +111,7 @@ jobs:
             test-suite.log
             tests/*.log
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: jq-${{ env.SUFFIX }}
           path: jq-${{ env.SUFFIX }}
@@ -136,7 +136,7 @@ jobs:
       SUFFIX: macos-${{ matrix.arch }}
     steps:
       - name: Clone repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: true
       - name: Install packages
@@ -168,7 +168,7 @@ jobs:
           git diff --exit-code
       - name: Upload Test Logs
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: test-logs-${{ env.SUFFIX }}
           retention-days: 7
@@ -176,7 +176,7 @@ jobs:
             test-suite.log
             tests/*.log
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: jq-${{ env.SUFFIX }}
           path: jq-${{ env.SUFFIX }}
@@ -213,7 +213,7 @@ jobs:
         run: git config --system core.autocrlf false
         shell: bash
       - name: Clone repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: true
       - uses: msys2/setup-msys2@v2
@@ -247,7 +247,7 @@ jobs:
           git diff --exit-code
       - name: Upload Test Logs
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: test-logs-${{ env.SUFFIX }}
           retention-days: 7
@@ -255,7 +255,7 @@ jobs:
             test-suite.log
             tests/*.log
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: jq-${{ env.SUFFIX }}
           path: jq-${{ env.SUFFIX }}.exe
@@ -266,7 +266,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: true
       - name: Install packages
@@ -283,7 +283,7 @@ jobs:
           make dist dist-zip
           git diff --exit-code
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: jq-dist
           if-no-files-found: error
@@ -302,9 +302,9 @@ jobs:
     needs: linux
     steps:
       - name: Clone repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Download executables
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           pattern: jq-linux-*
           merge-multiple: true
@@ -377,9 +377,9 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/jq-')
     steps:
       - name: Clone repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Download artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           pattern: jq-*
           merge-multiple: true
