@@ -91,19 +91,15 @@ jv jv_get(jv t, jv k) {
       v = jv_null();
     } else {
       double didx = jv_number_value(k);
-      if (jvp_number_is_nan(k)) {
+      if (didx < INT_MIN) didx = INT_MIN;
+      if (didx > INT_MAX) didx = INT_MAX;
+      int idx = (int)didx;
+      if (idx < 0)
+        idx += jv_array_length(jv_copy(t));
+      v = jv_array_get(t, idx);
+      if (!jv_is_valid(v)) {
+        jv_free(v);
         v = jv_null();
-      } else {
-        if (didx < INT_MIN) didx = INT_MIN;
-        if (didx > INT_MAX) didx = INT_MAX;
-        int idx = (int)didx;
-        if (idx < 0)
-          idx += jv_array_length(jv_copy(t));
-        v = jv_array_get(t, idx);
-        if (!jv_is_valid(v)) {
-          jv_free(v);
-          v = jv_null();
-        }
       }
     }
     jv_free(k);
@@ -135,20 +131,12 @@ jv jv_get(jv t, jv k) {
     jv_free(k);
     v = jv_null();
   } else {
-    /*
-     * If k is a short string it's probably from a jq .foo expression or
-     * similar, in which case putting it in the invalid msg may help the
-     * user.  The length 30 is arbitrary.
-     */
-    if (jv_get_kind(k) == JV_KIND_STRING && jv_string_length_bytes(jv_copy(k)) < 30) {
-      v = jv_invalid_with_msg(jv_string_fmt("Cannot index %s with string \"%s\"",
-                                            jv_kind_name(jv_get_kind(t)),
-                                            jv_string_value(k)));
-    } else {
-      v = jv_invalid_with_msg(jv_string_fmt("Cannot index %s with %s",
-                                            jv_kind_name(jv_get_kind(t)),
-                                            jv_kind_name(jv_get_kind(k))));
-    }
+    char errbuf[30];
+    v = jv_invalid_with_msg(jv_string_fmt(
+          "Cannot index %s with %s (%s)",
+          jv_kind_name(jv_get_kind(t)),
+          jv_kind_name(jv_get_kind(k)),
+          jv_dump_string_trunc(jv_copy(k), errbuf, sizeof(errbuf))));
     jv_free(t);
     jv_free(k);
   }
@@ -171,6 +159,7 @@ jv jv_set(jv t, jv k, jv v) {
     if (jvp_number_is_nan(k)) {
       jv_free(t);
       jv_free(k);
+      jv_free(v);
       t = jv_invalid_with_msg(jv_string("Cannot set array element at NaN index"));
     } else {
       double didx = jv_number_value(k);
@@ -287,7 +276,9 @@ static jv jv_dels(jv t, jv keys) {
     jv starts = jv_array(), ends = jv_array();
     jv_array_foreach(keys, i, key) {
       if (jv_get_kind(key) == JV_KIND_NUMBER) {
-        if (jv_number_value(key) < 0) {
+        if (jvp_number_is_nan(key)) {
+          jv_free(key);
+        } else if (jv_number_value(key) < 0) {
           neg_keys = jv_array_append(neg_keys, key);
         } else {
           nonneg_keys = jv_array_append(nonneg_keys, key);
@@ -300,7 +291,6 @@ static jv jv_dels(jv t, jv keys) {
           ends = jv_array_append(ends, jv_number(end));
         } else {
           jv_free(new_array);
-          jv_free(key);
           new_array = e;
           goto arr_out;
         }
@@ -451,13 +441,14 @@ jv jv_getpath(jv root, jv path) {
 static jv delpaths_sorted(jv object, jv paths, int start) {
   jv delkeys = jv_array();
   for (int i=0; i<jv_array_length(jv_copy(paths));) {
-    int j = i;
     assert(jv_array_length(jv_array_get(jv_copy(paths), i)) > start);
     int delkey = jv_array_length(jv_array_get(jv_copy(paths), i)) == start + 1;
     jv key = jv_array_get(jv_array_get(jv_copy(paths), i), start);
-    while (j < jv_array_length(jv_copy(paths)) &&
-           jv_equal(jv_copy(key), jv_array_get(jv_array_get(jv_copy(paths), j), start)))
+    int j = i;
+    do
       j++;
+    while (j < jv_array_length(jv_copy(paths)) &&
+           jv_equal(jv_copy(key), jv_array_get(jv_array_get(jv_copy(paths), j), start)));
     // if i <= entry < j, then entry starts with key
     if (delkey) {
       // deleting this entire key, we don't care about any more specific deletions

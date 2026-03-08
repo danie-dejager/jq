@@ -16,7 +16,6 @@
 #include "locfile.h"
 #include "jv.h"
 #include "jq.h"
-#include "parser.h"
 #include "util.h"
 #include "compile.h"
 #include "jv_alloc.h"
@@ -60,6 +59,7 @@ static jv build_lib_search_chain(jq_state *jq, jv search_path, jv jq_origin, jv 
     }
     path = expand_path(path);
     if (!jv_is_valid(path)) {
+      jv_free(err);
       err = path;
       path = jv_null();
       continue;
@@ -366,11 +366,13 @@ static int load_library(jq_state *jq, jv lib_path, int is_data, int raw, int opt
       program = block_bind_self(program, OP_IS_CALL_PSEUDO);
     }
   }
-  state_idx = lib_state->ct++;
-  lib_state->names = jv_mem_realloc(lib_state->names, lib_state->ct * sizeof(const char *));
-  lib_state->defs = jv_mem_realloc(lib_state->defs, lib_state->ct * sizeof(block));
-  lib_state->names[state_idx] = strdup(jv_string_value(lib_path));
-  lib_state->defs[state_idx] = program;
+  if (nerrors == 0) {
+    state_idx = lib_state->ct++;
+    lib_state->names = jv_mem_realloc(lib_state->names, lib_state->ct * sizeof(const char *));
+    lib_state->defs = jv_mem_realloc(lib_state->defs, lib_state->ct * sizeof(block));
+    lib_state->names[state_idx] = strdup(jv_string_value(lib_path));
+    lib_state->defs[state_idx] = program;
+  }
 out:
   *out_block = program;
   jv_free(lib_path);
