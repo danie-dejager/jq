@@ -1306,6 +1306,14 @@ static jv f_string_explode(jq_state *jq, jv a) {
 }
 
 static jv f_string_indexes(jq_state *jq, jv a, jv b) {
+  if (jv_get_kind(a) != JV_KIND_STRING) {
+    jv_free(b);
+    return type_error(a, "cannot be searched, as it is not a string");
+  }
+  if (jv_get_kind(b) != JV_KIND_STRING) {
+    jv_free(a);
+    return type_error(b, "is not a string");
+  }
   return jv_string_indexes(a, b);
 }
 
@@ -1783,21 +1791,29 @@ static jv f_strftime(jq_state *jq, jv a, jv b) {
   int fmt_not_empty = *fmt != '\0';
   size_t max_size = strlen(fmt) + 100;
   char *buf = jv_mem_alloc(max_size);
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__sun)
   /* Apple Libc (as of version 1669.40.2) contains a bug which causes it to
    * ignore the `tm.tm_gmtoff` in favor of the global timezone. To print the
    * proper timezone offset we temporarily switch the TZ to UTC. */
   char *tz = (tz = getenv("TZ")) != NULL ? strdup(tz) : NULL;
   setenv("TZ", "UTC", 1);
 #endif
+#if defined(__sun)
+  /* Solaris moreover needs call to tzset to take the changed environment into
+   * account ... */
+  tzset();
+#endif
   size_t n = strftime(buf, max_size, fmt, &tm);
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__sun)
   if (tz) {
     setenv("TZ", tz, 1);
     free(tz);
   } else {
     unsetenv("TZ");
   }
+#endif
+#if defined(__sun)
+  tzset();
 #endif
   jv_free(b);
   /* POSIX doesn't provide errno values for strftime() failures; weird */
