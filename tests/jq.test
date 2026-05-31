@@ -2602,3 +2602,34 @@ true
 try (reduce range(10001) as $_ ([]; [.]) as $x | $x | contains($x)) catch .
 null
 "Containment check too deep"
+
+# regression test for CVE-2026-43896
+reduce range(10000) as $_ ({}; {a: .}) as $x | $x * $x | length
+null
+1
+
+try (reduce range(10001) as $_ ({}; {a: .}) as $x | $x * $x) catch .
+null
+"Object merge too deep"
+
+# regression test for deep structural equality recursion
+try ((reduce range(10001) as $_ ([]; [.])) as $x | (reduce range(10001) as $_ ([]; [.])) as $y | $x == $y) catch .
+null
+"Equality check too deep"
+
+# regression tests for deep ordering comparisons
+try ((reduce range(10001) as $_ ([]; [.])) as $x | [$x, $x] | sort) catch .
+null
+"Comparison too deep"
+
+try ((reduce range(10001) as $_ ([]; [.])) as $x | [$x, $x] | unique) catch .
+null
+"Comparison too deep"
+
+try ((reduce range(10001) as $_ ({}; {a: .})) as $x | [$x, $x] | sort) catch .
+null
+"Comparison too deep"
+
+try ((reduce range(10001) as $_ ({}; {a: .})) as $x | [$x, $x] | unique) catch .
+null
+"Comparison too deep"
