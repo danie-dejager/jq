@@ -1,6 +1,6 @@
 Name:           jq
 Version:        1.8.1
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        Command-line JSON processor
 
 License:        MIT AND ICU AND CC-BY-3.0
